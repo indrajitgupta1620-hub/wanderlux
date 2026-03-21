@@ -1,4 +1,12 @@
+const express = require('express');
+const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const User = require('../models/User');
+const { protect } = require('../middleware/auth');
+const router = express.Router();
+
+const signToken = (id) =>
+  jwt.sign({ id }, process.env.JWT_SECRET || 'wanderlux_secret_2025', { expiresIn: '7d' });
 
 router.post('/register', async (req, res) => {
   try {
@@ -40,3 +48,37 @@ router.post('/login', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+router.get('/me', protect, async (req, res) => {
+  res.json({ status: 'success', data: { user: req.user } });
+});
+
+router.patch('/me', protect, async (req, res) => {
+  try {
+    const { name, phone } = req.body;
+    const updated = await User.findByIdAndUpdate(
+      req.user._id,
+      { name, phone },
+      { new: true, runValidators: true }
+    ).select('-password');
+    res.json({ status: 'success', data: { user: updated } });
+  } catch (err) {
+    res.status(500).json({ error: 'Update failed.' });
+  }
+});
+
+router.post('/me/favorites/:destId', protect, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    const favs = user.favorites || [];
+    const idx = favs.indexOf(req.params.destId);
+    if (idx === -1) favs.push(req.params.destId);
+    else favs.splice(idx, 1);
+    await User.findByIdAndUpdate(req.user._id, { favorites: favs });
+    res.json({ status: 'success', favorites: favs });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update favorites.' });
+  }
+});
+
+module.exports = router;
