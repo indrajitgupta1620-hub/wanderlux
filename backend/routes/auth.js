@@ -25,7 +25,7 @@ router.post('/register', async (req, res) => {
     res.status(201).json({ status: 'success', token: signToken(user._id), data: { user: safe } });
   } catch (err) {
     console.error('Register error:', err); // ← add this to see error in Render logs
-    res.status(500).json({ error: 'Registration failed.' });
+    res.status(500).json({ error: err.message });
   }
 });
 
