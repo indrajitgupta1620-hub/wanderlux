@@ -12,6 +12,7 @@ const recommendRoutes = require('./routes/recommendations');
 const { seedIfEmpty } = require('./data/seed');
 
 const app = express();
+app.set('trust proxy', 1); // ← add this line
 
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cors({ origin: process.env.FRONTEND_URL || '*', credentials: true }));
