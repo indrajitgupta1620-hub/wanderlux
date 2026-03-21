@@ -19,10 +19,12 @@ router.post('/register', async (req, res) => {
     if (exists)
       return res.status(409).json({ error: 'Account already exists.' });
 
+    // NO manual bcrypt.hash here — User model handles it
     const user = await User.create({ name, email, password, favorites: [], role: 'user', isActive: true });
     const { password: _, ...safe } = user.toObject();
     res.status(201).json({ status: 'success', token: signToken(user._id), data: { user: safe } });
   } catch (err) {
+    console.error('Register error:', err); // ← add this to see error in Render logs
     res.status(500).json({ error: 'Registration failed.' });
   }
 });
