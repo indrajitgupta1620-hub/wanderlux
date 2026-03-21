@@ -1,5 +1,7 @@
 const express = require('express');
-const db = require('../db/jsonDb');
+const Destination = require('../models/Destination');
+const Booking = require('../models/Booking');
+const User = require('../models/User');
 const { protect } = require('../middleware/auth');
 const router = express.Router();
 
@@ -12,37 +14,65 @@ const RELATED = {
   luxury: ['luxury', 'beach'],
 };
 
-router.get('/recommendations/:destinationId', (req, res) => {
-  const source = db.findById('destinations', req.params.destinationId);
-  if (!source) return res.status(404).json({ error: 'Destination not found.' });
-  const cats = RELATED[source.category] || [source.category];
-  const recs = db.find('destinations', { isActive: true })
-    .filter(d => d._id !== source._id && cats.includes(d.category))
-    .sort((a, b) => b.rating - a.rating)
-    .slice(0, 6);
-  res.json({ status: 'success', data: { recommendations: recs } });
+router.get('/recommendations/:destinationId', async (req, res) => {
+  try {
+    const source = await Destination.findById(req.params.destinationId);
+    if (!source) return res.status(404).json({ error: 'Destination not found.' });
+
+    const cats = RELATED[source.category] || [source.category];
+    const recs = await Destination.find({
+      isActive: true,
+      _id: { $ne: source._id },
+      category: { $in: cats },
+    }).sort({ rating: -1 }).limit(6);
+
+    res.json({ status: 'success', data: { recommendations: recs } });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch recommendations.' });
+  }
 });
 
-router.get('/recommendations', protect, (req, res) => {
-  const bookings = db.find('bookings', { userId: req.user._id });
-  const user = db.findById('users', req.user._id);
-  const catCount = {};
-  bookings.forEach(b => {
-    const dest = db.findById('destinations', b.destinationId);
-    if (dest?.category) catCount[dest.category] = (catCount[dest.category] || 0) + 2;
-  });
-  (user.favorites || []).forEach(fid => {
-    const dest = db.findById('destinations', fid);
-    if (dest?.category) catCount[dest.category] = (catCount[dest.category] || 0) + 1;
-  });
-  const topCats = Object.entries(catCount).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([c]) => c);
-  const seenIds = [...bookings.map(b => b.destinationId), ...(user.favorites || [])];
-  const relCats = topCats.length ? [...new Set(topCats.flatMap(c => RELATED[c] || [c]))] : null;
-  let recs = db.find('destinations', { isActive: true })
-    .filter(d => !seenIds.includes(d._id) && (!relCats || relCats.includes(d.category)))
-    .sort((a, b) => b.rating - a.rating)
-    .slice(0, 8);
-  res.json({ status: 'success', data: { recommendations: recs } });
+router.get('/recommendations', protect, async (req, res) => {
+  try {
+    const [bookings, user] = await Promise.all([
+      Booking.find({ userId: req.user._id }),
+      User.findById(req.user._id),
+    ]);
+
+    const catCount = {};
+    const bookedDestIds = bookings.map(b => b.destinationId.toString());
+
+    const bookedDests = await Destination.find({ _id: { $in: bookedDestIds } });
+    bookedDests.forEach(d => {
+      if (d?.category) catCount[d.category] = (catCount[d.category] || 0) + 2;
+    });
+
+    const favDests = await Destination.find({ _id: { $in: user.favorites || [] } });
+    favDests.forEach(d => {
+      if (d?.category) catCount[d.category] = (catCount[d.category] || 0) + 1;
+    });
+
+    const topCats = Object.entries(catCount)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 2)
+      .map(([c]) => c);
+
+    const seenIds = [...bookedDestIds, ...(user.favorites || [])];
+    const relCats = topCats.length
+      ? [...new Set(topCats.flatMap(c => RELATED[c] || [c]))]
+      : null;
+
+    const query = {
+      isActive: true,
+      _id: { $nin: seenIds },
+      ...(relCats && { category: { $in: relCats } }),
+    };
+
+    const recs = await Destination.find(query).sort({ rating: -1 }).limit(8);
+    res.json({ status: 'success', data: { recommendations: recs } });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch recommendations.' });
+  }
 });
 
 module.exports = router;

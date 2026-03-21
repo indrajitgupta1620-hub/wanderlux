@@ -1,16 +1,18 @@
 const jwt = require('jsonwebtoken');
-const db = require('../db/jsonDb');
+const User = require('../models/User');
 
-exports.protect = (req, res, next) => {
+exports.protect = async (req, res, next) => {
     try {
         let token;
         if (req.headers.authorization?.startsWith('Bearer '))
             token = req.headers.authorization.split(' ')[1];
         if (!token)
             return res.status(401).json({ error: 'You must be logged in.' });
+
         const decoded = jwt.verify(token, process.env.JWT_SECRET || 'wanderlux_secret_2025');
-        const user = db.findById('users', decoded.id);
+        const user = await User.findById(decoded.id).select('-password');
         if (!user) return res.status(401).json({ error: 'User no longer exists.' });
+
         req.user = user;
         next();
     } catch (err) {

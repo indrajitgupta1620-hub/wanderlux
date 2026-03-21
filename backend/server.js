@@ -4,6 +4,7 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 
+const connectDB = require('./db/mongoose');
 const authRoutes = require('./routes/auth');
 const destinationRoutes = require('./routes/destinations');
 const bookingRoutes = require('./routes/bookings');
@@ -23,7 +24,7 @@ app.use('/api', bookingRoutes);
 app.use('/api', recommendRoutes);
 
 app.get('/', (req, res) =>
-  res.json({ status: 'ok', service: 'Wanderlux API', database: 'Local JSON' })
+  res.json({ status: 'ok', service: 'Wanderlux API', database: 'MongoDB Atlas' })
 );
 
 app.use((req, res) =>
@@ -36,10 +37,12 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 5000;
-seedIfEmpty();
-app.listen(PORT, () => {
-  console.log(`✅  Local JSON database ready`);
-  console.log(`🚀  Wanderlux API running on http://localhost:${PORT}`);
+
+connectDB().then(async () => {
+  await seedIfEmpty();
+  app.listen(PORT, () => {
+    console.log(`🚀  Wanderlux API running on http://localhost:${PORT}`);
+  });
 });
 
 module.exports = app;

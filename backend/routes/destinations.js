@@ -1,40 +1,47 @@
 const express = require('express');
-const db = require('../db/jsonDb');
+const Destination = require('../models/Destination');
 const { protect } = require('../middleware/auth');
 const router = express.Router();
 
-router.get('/destinations', (req, res) => {
+router.get('/destinations', async (req, res) => {
   try {
     const { category, search, featured } = req.query;
-    let dests = db.find('destinations', { isActive: true });
-    if (category && category !== 'all')
-      dests = dests.filter(d => d.category === category);
-    if (featured === 'true')
-      dests = dests.filter(d => d.isFeatured);
+    const query = { isActive: true };
+
+    if (category && category !== 'all') query.category = category;
+    if (featured === 'true') query.isFeatured = true;
     if (search) {
-      const q = search.toLowerCase();
-      dests = dests.filter(d =>
-        d.name.toLowerCase().includes(q) ||
-        d.country.toLowerCase().includes(q) ||
-        (d.description || '').toLowerCase().includes(q)
-      );
+      const q = new RegExp(search, 'i');
+      query.$or = [{ name: q }, { country: q }, { description: q }];
     }
-    res.json({ status: 'success', total: dests.length, data: { destinations: dests } });
-  } catch (err) { res.status(500).json({ error: 'Failed to fetch destinations.' }); }
+
+    const destinations = await Destination.find(query);
+    res.json({ status: 'success', total: destinations.length, data: { destinations } });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch destinations.' });
+  }
 });
 
-router.get('/destination/:id', (req, res) => {
-  const dest = db.findById('destinations', req.params.id);
-  if (!dest || !dest.isActive)
-    return res.status(404).json({ error: 'Destination not found.' });
-  res.json({ status: 'success', data: { destination: dest } });
+router.get('/destination/:id', async (req, res) => {
+  try {
+    const dest = await Destination.findById(req.params.id);
+    if (!dest || !dest.isActive)
+      return res.status(404).json({ error: 'Destination not found.' });
+    res.json({ status: 'success', data: { destination: dest } });
+  } catch (err) {
+    res.status(404).json({ error: 'Destination not found.' });
+  }
 });
 
-router.post('/destinations', protect, (req, res) => {
-  if (req.user.role !== 'admin')
-    return res.status(403).json({ error: 'Admin only.' });
-  const dest = db.insert('destinations', { ...req.body, isActive: true });
-  res.status(201).json({ status: 'success', data: { destination: dest } });
+router.post('/destinations', protect, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin')
+      return res.status(403).json({ error: 'Admin only.' });
+    const dest = await Destination.create({ ...req.body, isActive: true });
+    res.status(201).json({ status: 'success', data: { destination: dest } });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to create destination.' });
+  }
 });
 
 module.exports = router;
